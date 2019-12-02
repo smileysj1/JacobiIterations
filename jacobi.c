@@ -63,6 +63,12 @@ char **argv;
 	    xLocal[rLast+1][c] = 100;    //set value for south boundary
     }
 
+    //print out our initial mesh from master to make sure things initialized correctly
+    if(rank == 0){
+        //assemble mesh
+        //print mesh
+    }
+
     itrCount = 0;
     do {
 
@@ -117,8 +123,10 @@ void printMesh(double** meshArray, int meshSize){
 
     for(r = 0; r < meshSize; r++){
         for(c = 0; c < meshSize; c++){
-            //print cell
+            //print cell with width 4 and 1 digit after the decimal
+            printf("%4.1f ", meshArray[r][c]);
         }
         //print newline
+        printf("\n");
     }
 }
