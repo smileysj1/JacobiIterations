@@ -5,12 +5,14 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <math.h>
 #include "mpi.h"
 
 /* This example handles a 12 x 12 mesh, on 4 processors only. */
 #define MESHSIZE 12
 #define NUMPROC 4
+#define LOCALSIZE (MESHSIZE/NUMPROC)+2
 
 int main( argc, argv )
 int argc;
@@ -32,8 +34,10 @@ char **argv;
     int        rFirst, rLast;
     MPI_Status status;
     double     diffNorm, gDiffNorm;
-    double     xLocal[(MESHSIZE/NUMPROC)+2][MESHSIZE];
-    double     xNew[(MESHSIZE/NUMPROC)+2][MESHSIZE];
+    double     xLocal[LOCALSIZE][MESHSIZE];
+    double     xNew[LOCALSIZE][MESHSIZE];
+
+    double xFull[MESHSIZE][MESHSIZE];
 
     double epsilon;
     int maxIterations;
@@ -52,11 +56,7 @@ char **argv;
 
     //assign our epsilon and maxIteration variables using our command line arguments
     epsilon = strtod(argv[1], NULL);
-    maxIterations = strtol(argv[2], NULL);
-
-    printf("%f %d\n", epsilon, maxIterations);
-
-    //if (commSize != 4) MPI_Abort( MPI_COMM_WORLD, 1 ); ///WHAT IS THIS
+    maxIterations = strtol(argv[2], NULL, 10);
 
     /* xlocal[][0] is lower ghostpoints, xlocal[][maxn+2] is upper */
 
@@ -77,6 +77,23 @@ char **argv;
 	    xLocal[rFirst-1][c] = 100;   //set value for north boundary
 	    xLocal[rLast+1][c] = 100;    //set value for south boundary
     }
+
+    
+    if(rank == 0){
+        //put master chunk into first final spot
+        memccpy(xFull[0], xLocal[1], sizeof(double) * (MESHSIZE / commSize) * MESHSIZE);
+
+        int proc;
+        for(proc = 1; proc < commSize; proc++){
+            //recieve each array chunk from other processes.
+            MPI_Recv(xFull[(MESHSIZE / commSize) * MESHSIZE * proc], (MESHSIZE / commSize) * MESHSIZE, MPI_DOUBLE, proc, 0, MPI_COMM_WORLD, &status); 
+        }
+    }
+    else{
+        //send chunk to master
+        MPI_Send(xLocal[1], (MESHSIZE / commSize) * MESHSIZE, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD );
+    }
+
 
     itrCount = 0;
     do {
