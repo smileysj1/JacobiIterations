@@ -53,13 +53,14 @@ char **argv;
     if (rank == commSize - 1) rLast--;
 
     /* Fill the data as specified */
-    for (r=1; r<=MESHSIZE/commSize; r++) 
-	    for (c=0; c<MESHSIZE; c++) 
-	        xLocal[r][c] = rank;
+    for (r=1; r<=MESHSIZE/commSize; r++) {
+        xLocal[r][MESHSIZE-1] = 75; //set value for east boundary
+        xLocal[r][0] = 10;          //set value for west boundary
+    }
 
     for (c=0; c<MESHSIZE; c++) {
-	    xLocal[rFirst-1][c] = -1;
-	    xLocal[rLast+1][c] = -1;
+	    xLocal[rFirst-1][c] = 100;   //set value for north boundary
+	    xLocal[rLast+1][c] = 100;    //set value for south boundary
     }
 
     itrCount = 0;
@@ -109,4 +110,15 @@ char **argv;
 
     MPI_Finalize( );
     return 0;
+}
+
+void printMesh(double** meshArray, int meshSize){
+    int r, c;   //loop control variables
+
+    for(r = 0; r < meshSize; r++){
+        for(c = 0; c < meshSize; c++){
+            //print cell
+        }
+        //print newline
+    }
 }
