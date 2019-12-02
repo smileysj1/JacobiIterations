@@ -4,13 +4,13 @@
 */
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <math.h>
 #include "mpi.h"
 
 /* This example handles a 12 x 12 mesh, on 4 processors only. */
 #define MESHSIZE 12
 #define NUMPROC 4
-#define MAXITR 100
 
 int main( argc, argv )
 int argc;
@@ -31,9 +31,18 @@ char **argv;
     int        rank, value, commSize, errorCount, totalError, r, c, itrCount;
     int        rFirst, rLast;
     MPI_Status status;
-    double     diffNorm, gGiffNorm;
+    double     diffNorm, gDiffNorm;
     double     xLocal[(MESHSIZE/NUMPROC)+2][MESHSIZE];
     double     xNew[(MESHSIZE/NUMPROC)+2][MESHSIZE];
+
+    double epsilon;
+    int maxIterations;
+
+    if(argc < 3){   //check that we have enough command line arguments
+        printf("Please specify the correct number of arguments.\n");
+        printf("Usage: jacobi [epsilon] [max_iterations]\n");
+        return 0;
+    }
 
     MPI_Init( &argc, &argv );
 
@@ -41,7 +50,13 @@ char **argv;
     MPI_Comm_rank( MPI_COMM_WORLD, &rank );
     MPI_Comm_size( MPI_COMM_WORLD, &commSize );
 
-    if (commSize != 4) MPI_Abort( MPI_COMM_WORLD, 1 );
+    //assign our epsilon and maxIteration variables using our command line arguments
+    epsilon = strtod(argv[1], NULL);
+    maxIterations = strtol(argv[2], NULL);
+
+    printf("%f %d\n", epsilon, maxIterations);
+
+    //if (commSize != 4) MPI_Abort( MPI_COMM_WORLD, 1 ); ///WHAT IS THIS
 
     /* xlocal[][0] is lower ghostpoints, xlocal[][maxn+2] is upper */
 
@@ -61,12 +76,6 @@ char **argv;
     for (c=0; c<MESHSIZE; c++) {
 	    xLocal[rFirst-1][c] = 100;   //set value for north boundary
 	    xLocal[rLast+1][c] = 100;    //set value for south boundary
-    }
-
-    //print out our initial mesh from master to make sure things initialized correctly
-    if(rank == 0){
-        //assemble mesh
-        //print mesh
     }
 
     itrCount = 0;
@@ -107,22 +116,26 @@ char **argv;
 	    for (c=1; c<MESHSIZE-1; c++) 
 		xLocal[r][c] = xNew[r][c];
 
-	MPI_Allreduce( &diffNorm, &gGiffNorm, 1, MPI_DOUBLE, MPI_SUM,
+	MPI_Allreduce( &diffNorm, &gDiffNorm, 1, MPI_DOUBLE, MPI_SUM,
 		       MPI_COMM_WORLD );
-	gGiffNorm = sqrt( gGiffNorm );
+	gDiffNorm = sqrt( gDiffNorm );
 	if (rank == 0) printf( "At iteration %d, diff is %e\n", itrCount, 
-			       gGiffNorm );
-    } while (gGiffNorm > 1.0e-2 && itrCount < MAXITR);
+			       gDiffNorm );
+    } while (gDiffNorm > epsilon && itrCount < maxIterations);
 
     MPI_Finalize( );
     return 0;
 }
 
-void printMesh(double** meshArray, int meshSize){
+void assembleMesh(double** meshSegment, int sourceProcess, double** meshTarget){
+    
+}
+
+void printMesh(double** meshArray){
     int r, c;   //loop control variables
 
-    for(r = 0; r < meshSize; r++){
-        for(c = 0; c < meshSize; c++){
+    for(r = 0; r < MESHSIZE; r++){
+        for(c = 0; c < MESHSIZE; c++){
             //print cell with width 4 and 1 digit after the decimal
             printf("%4.1f ", meshArray[r][c]);
         }
