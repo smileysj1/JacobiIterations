@@ -71,12 +71,12 @@ char **argv;
     /* Note that top and bottom processes have one less row of interior
        points */
     rFirst = 1;
-    rLast  = MESHSIZE/commSize;
+    rLast  = CHUNKROWS;
     if (rank == 0)        rFirst++;
     if (rank == commSize - 1) rLast--;
 
     /* Fill the data as specified */
-    for (r=1; r<=MESHSIZE/commSize; r++) {
+    for (r = 1; r <= CHUNKROWS; r++) {
         for(c = 0; c < MESHSIZE; c++){
             xLocal[r][c] = interiorInit;
         }
