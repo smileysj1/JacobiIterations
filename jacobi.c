@@ -12,7 +12,10 @@
 /* This example handles a 12 x 12 mesh, on 4 processors only. */
 #define MESHSIZE 12
 #define NUMPROC 4
-#define LOCALSIZE (MESHSIZE/NUMPROC)+2
+#define CHUNKROWS (MESHSIZE/NUMPROC)            //number of rows in a chunk
+#define CHUNKSIZE (MESHSIZE/commSize)*MESHSIZE  //number of doubles in a chunk
+
+void printMesh(double meshArray[][]);
 
 int main( argc, argv )
 int argc;
@@ -34,8 +37,8 @@ char **argv;
     int        rFirst, rLast;
     MPI_Status status;
     double     diffNorm, gDiffNorm;
-    double     xLocal[LOCALSIZE][MESHSIZE];
-    double     xNew[LOCALSIZE][MESHSIZE];
+    double     xLocal[CHUNKROWS + 2][MESHSIZE];
+    double     xNew[CHUNKROWS + 2][MESHSIZE];
 
     double xFull[MESHSIZE][MESHSIZE];
 
@@ -72,32 +75,14 @@ char **argv;
         xLocal[r][MESHSIZE-1] = 75; //set value for east boundary
         xLocal[r][0] = 10;          //set value for west boundary
     }
-
     for (c=0; c<MESHSIZE; c++) {
 	    xLocal[rFirst-1][c] = 100;   //set value for north boundary
 	    xLocal[rLast+1][c] = 100;    //set value for south boundary
     }
 
-    
-    if(rank == 0){
-        //put master chunk into first final spot
-        memccpy(xFull[0], xLocal[1], sizeof(double) * (MESHSIZE / commSize) * MESHSIZE);
-
-        int proc;
-        for(proc = 1; proc < commSize; proc++){
-            //recieve each array chunk from other processes.
-            MPI_Recv(xFull[(MESHSIZE / commSize) * MESHSIZE * proc], (MESHSIZE / commSize) * MESHSIZE, MPI_DOUBLE, proc, 0, MPI_COMM_WORLD, &status); 
-        }
-    }
-    else{
-        //send chunk to master
-        MPI_Send(xLocal[1], (MESHSIZE / commSize) * MESHSIZE, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD );
-    }
-
 
     itrCount = 0;
     do {
-
 	/* Send up unless I'm at the top, then receive from below */
 	/* Note the use of xlocal[i] for &xlocal[i][0] */
 	if (rank < commSize - 1) 
@@ -121,9 +106,9 @@ char **argv;
 	diffNorm = 0.0;
 	for (r=rFirst; r<=rLast; r++) 
 	    for (c=1; c<MESHSIZE-1; c++) {
-		xNew[r][c] = (xLocal[r][c+1] + xLocal[r][c-1] +
+		xNew[r][c] = (xLocal[r][c+1] + xLocal[r][c-1] +     //new value computed as the average of its 4 neighbors
 			      xLocal[r+1][c] + xLocal[r-1][c]) / 4.0;
-		diffNorm += (xNew[r][c] - xLocal[r][c]) * 
+		diffNorm += (xNew[r][c] - xLocal[r][c]) *           //compute diff
 		            (xNew[r][c] - xLocal[r][c]);
 	    }
 
@@ -140,15 +125,24 @@ char **argv;
 			       gDiffNorm );
     } while (gDiffNorm > epsilon && itrCount < maxIterations);
 
+        //send chunks to master
+    MPI_Send(xLocal[1], (MESHSIZE / commSize) * MESHSIZE, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+    
+    if(rank == 0){  //assemble chunks on master into full mesh
+        int proc;
+        for(proc = 0; proc < commSize; proc++){
+            //recieve each array chunk from other processes.
+            MPI_Recv(xFull[CHUNKROWS * proc], CHUNKSIZE, MPI_DOUBLE, proc, 0, MPI_COMM_WORLD, &status); 
+        }
+
+        printMesh(xFull);
+    }
+
     MPI_Finalize( );
     return 0;
 }
 
-void assembleMesh(double** meshSegment, int sourceProcess, double** meshTarget){
-    
-}
-
-void printMesh(double** meshArray){
+void printMesh(double meshArray[MESHSIZE][MESHSIZE]){
     int r, c;   //loop control variables
 
     for(r = 0; r < MESHSIZE; r++){
