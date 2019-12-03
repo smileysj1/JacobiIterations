@@ -9,18 +9,23 @@
 #include <math.h>
 #include "mpi.h"
 
-/* This example handles a 12 x 12 mesh, on 4 processors only. */
-#define MESHSIZE 12
+#define MESHSIZE 800
 #define NUMPROC 4
-#define CHUNKROWS (MESHSIZE/NUMPROC)            //number of rows in a chunk
-#define CHUNKSIZE (MESHSIZE/commSize)*MESHSIZE  //number of doubles in a chunk
+#define CHUNKROWS (MESHSIZE/NUMPROC)
+#define CHUNKSIZE (CHUNKROWS * MESHSIZE)
 
-void printMesh(double meshArray[][]);
+void printMesh(float meshArray[][]);
 
 int main( argc, argv )
 int argc;
 char **argv;
 {
+    const float northBound = 100.0;
+    const float southBound = 100.0;
+    const float eastBound = 75.0;
+    const float westBound = 10.0;
+    const float interiorInit = (northBound + southBound + eastBound + westBound) / 4.0;
+
     /*
     rank: MPI rank of the current process
     value:
@@ -36,13 +41,13 @@ char **argv;
     int        rank, value, commSize, errorCount, totalError, r, c, itrCount;
     int        rFirst, rLast;
     MPI_Status status;
-    double     diffNorm, gDiffNorm;
-    double     xLocal[CHUNKROWS + 2][MESHSIZE];
-    double     xNew[CHUNKROWS + 2][MESHSIZE];
+    float     diffNorm, gDiffNorm;
+    float     xLocal[CHUNKROWS + 2][MESHSIZE];
+    float     xNew[CHUNKROWS + 2][MESHSIZE];
 
-    double xFull[MESHSIZE][MESHSIZE];
+    float xFull[MESHSIZE][MESHSIZE];
 
-    double epsilon;
+    float epsilon;
     int maxIterations;
 
     if(argc < 3){   //check that we have enough command line arguments
@@ -72,12 +77,16 @@ char **argv;
 
     /* Fill the data as specified */
     for (r=1; r<=MESHSIZE/commSize; r++) {
-        xLocal[r][MESHSIZE-1] = 75; //set value for east boundary
-        xLocal[r][0] = 10;          //set value for west boundary
+        for(c = 0; c < MESHSIZE; c++){
+            xLocal[r][c] = interiorInit;
+        }
+
+        xLocal[r][MESHSIZE-1] = eastBound; //set value for east boundary
+        xLocal[r][0] = westBound;          //set value for west boundary
     }
     for (c=0; c<MESHSIZE; c++) {
-	    xLocal[rFirst-1][c] = 100;   //set value for north boundary
-	    xLocal[rLast+1][c] = 100;    //set value for south boundary
+	    xLocal[rFirst-1][c] = northBound;   //set value for north boundary
+	    xLocal[rLast+1][c] = southBound;    //set value for south boundary
     }
 
 
@@ -86,18 +95,18 @@ char **argv;
 	/* Send up unless I'm at the top, then receive from below */
 	/* Note the use of xlocal[i] for &xlocal[i][0] */
 	if (rank < commSize - 1) 
-	    MPI_Send( xLocal[MESHSIZE/commSize], MESHSIZE, MPI_DOUBLE, rank + 1, 0, 
+	    MPI_Send( xLocal[MESHSIZE/commSize], MESHSIZE, MPI_FLOAT, rank + 1, 0, 
 		      MPI_COMM_WORLD );
 	if (rank > 0)
-	    MPI_Recv( xLocal[0], MESHSIZE, MPI_DOUBLE, rank - 1, 0, 
+	    MPI_Recv( xLocal[0], MESHSIZE, MPI_FLOAT, rank - 1, 0, 
 		      MPI_COMM_WORLD, &status );
 
 	/* Send down unless I'm at the bottom */
 	if (rank > 0) 
-	    MPI_Send( xLocal[1], MESHSIZE, MPI_DOUBLE, rank - 1, 1, 
+	    MPI_Send( xLocal[1], MESHSIZE, MPI_FLOAT, rank - 1, 1, 
 		      MPI_COMM_WORLD );
 	if (rank < commSize - 1) 
-	    MPI_Recv( xLocal[MESHSIZE/commSize+1], MESHSIZE, MPI_DOUBLE, rank + 1, 1, 
+	    MPI_Recv( xLocal[MESHSIZE/commSize+1], MESHSIZE, MPI_FLOAT, rank + 1, 1, 
 		      MPI_COMM_WORLD, &status );
 	
 
@@ -108,7 +117,7 @@ char **argv;
 	    for (c=1; c<MESHSIZE-1; c++) {
 		xNew[r][c] = (xLocal[r][c+1] + xLocal[r][c-1] +     //new value computed as the average of its 4 neighbors
 			      xLocal[r+1][c] + xLocal[r-1][c]) / 4.0;
-		diffNorm += (xNew[r][c] - xLocal[r][c]) *           //compute diff
+		diffNorm += (xNew[r][c] - xLocal[r][c]) *           //compute diffNorm sum
 		            (xNew[r][c] - xLocal[r][c]);
 	    }
 
@@ -118,21 +127,22 @@ char **argv;
 	    for (c=1; c<MESHSIZE-1; c++) 
 		xLocal[r][c] = xNew[r][c];
 
-	MPI_Allreduce( &diffNorm, &gDiffNorm, 1, MPI_DOUBLE, MPI_SUM,
+	MPI_Allreduce( &diffNorm, &gDiffNorm, 1, MPI_FLOAT, MPI_SUM,
 		       MPI_COMM_WORLD );
 	gDiffNorm = sqrt( gDiffNorm );
 	if (rank == 0) printf( "At iteration %d, diff is %e\n", itrCount, 
 			       gDiffNorm );
-    } while (gDiffNorm > epsilon && itrCount < maxIterations);
+    } while (gDiffNorm > epsilon && itrCount < maxIterations);  //keep doing Jacobi iterations until we hit our iteration or precision limit
 
-        //send chunks to master
-    MPI_Send(xLocal[1], (MESHSIZE / commSize) * MESHSIZE, MPI_DOUBLE, 0, 0, MPI_COMM_WORLD);
+    
+    //send chunks to master
+    MPI_Send(xLocal[1], (MESHSIZE / commSize) * MESHSIZE, MPI_FLOAT, 0, 0, MPI_COMM_WORLD);
     
     if(rank == 0){  //assemble chunks on master into full mesh
         int proc;
         for(proc = 0; proc < commSize; proc++){
-            //recieve each array chunk from other processes.
-            MPI_Recv(xFull[CHUNKROWS * proc], CHUNKSIZE, MPI_DOUBLE, proc, 0, MPI_COMM_WORLD, &status); 
+            //recieve each array chunk from other processes
+            MPI_Recv(xFull[CHUNKROWS * proc], CHUNKSIZE, MPI_FLOAT, proc, 0, MPI_COMM_WORLD, &status); 
         }
 
         printMesh(xFull);
@@ -142,7 +152,7 @@ char **argv;
     return 0;
 }
 
-void printMesh(double meshArray[MESHSIZE][MESHSIZE]){
+void printMesh(float meshArray[MESHSIZE][MESHSIZE]){
     int r, c;   //loop control variables
 
     for(r = 0; r < MESHSIZE; r++){
