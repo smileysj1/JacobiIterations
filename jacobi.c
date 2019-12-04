@@ -17,6 +17,7 @@
 void printMesh(float** meshArray);
 float** makeContiguous2DArray(int r, int c);
 void freeContiguous2DArray(float** ary);
+void swap2DArray(float** ary1, float** ary2);
 
 int main( argc, argv )
 int argc;
@@ -133,11 +134,7 @@ char **argv;
 		            (xNew[r][c] - xLocal[r][c]);
 	    }
 
-
-	/* Only transfer the interior points */
-	for (r=rFirst; r<=rLast; r++) 
-	    for (c=1; c<MESHSIZE-1; c++) 
-		xLocal[r][c] = xNew[r][c];
+    swap2DArray(xLocal, xNew);
 
 	MPI_Allreduce( &diffNorm, &gDiffNorm, 1, MPI_FLOAT, MPI_SUM,
 		       MPI_COMM_WORLD );
@@ -201,4 +198,11 @@ float** makeContiguous2DArray(int r, int c){
 void freeContiguous2DArray(float** ary){
     free(ary[0]);   //free the pool
     free(ary);      //free the pointers
+}
+
+void swap2DArray(float** ary1, float** ary2){
+    float** temp = ary1;
+
+    ary1 = ary2;
+    ary2 = temp;
 }
