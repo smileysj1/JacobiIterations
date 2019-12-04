@@ -9,22 +9,26 @@
 #include <math.h>
 #include "mpi.h"
 
-#define MESHSIZE 800
+#define MESHSIZE 16
 #define NUMPROC 4
 #define CHUNKROWS (MESHSIZE/NUMPROC)
 #define CHUNKSIZE (CHUNKROWS * MESHSIZE)
 
-void printMesh(float meshArray[][]);
+void printMesh(float** meshArray);
+float** makeContiguous2DArray(int r, int c);
+void freeContiguous2DArray(float** ary);
 
 int main( argc, argv )
 int argc;
 char **argv;
 {
-    const float northBound = 100.0;
-    const float southBound = 100.0;
-    const float eastBound = 75.0;
-    const float westBound = 10.0;
-    const float interiorInit = (northBound + southBound + eastBound + westBound) / 4.0;
+    
+    const float NORTH_BOUND = 100.0;
+    const float SOUTH_BOUND = 100.0;
+    const float EAST_BOUND = 75.0;
+    const float WEST_BOUND = 10.0;
+    const float INTERIOR_AVG = (NORTH_BOUND + SOUTH_BOUND + EAST_BOUND + WEST_BOUND) / 4.0;
+
 
     /*
     rank: MPI rank of the current process
@@ -42,13 +46,13 @@ char **argv;
     int        rFirst, rLast;
     MPI_Status status;
     float     diffNorm, gDiffNorm;
-    float     xLocal[CHUNKROWS + 2][MESHSIZE];
-    float     xNew[CHUNKROWS + 2][MESHSIZE];
-
-    float xFull[MESHSIZE][MESHSIZE];
+    float**     xLocal;
+    float**     xNew;
+    float**     xFull;
 
     float epsilon;
     int maxIterations;
+
 
     if(argc < 3){   //check that we have enough command line arguments
         printf("Please specify the correct number of arguments.\n");
@@ -61,6 +65,13 @@ char **argv;
     //Initialize MPI communicator rank and size variables.
     MPI_Comm_rank( MPI_COMM_WORLD, &rank );
     MPI_Comm_size( MPI_COMM_WORLD, &commSize );
+
+    //allocate memory to 2d arrays
+    xLocal = makeContiguous2DArray(CHUNKROWS + 2, MESHSIZE);
+    xNew = makeContiguous2DArray(CHUNKROWS + 2, MESHSIZE);
+    xFull = makeContiguous2DArray(MESHSIZE, MESHSIZE);
+
+    printf("succesfully allocated array's on proc %d\n", rank);
 
     //assign our epsilon and maxIteration variables using our command line arguments
     epsilon = strtod(argv[1], NULL);
@@ -78,16 +89,17 @@ char **argv;
     /* Fill the data as specified */
     for (r = 1; r <= CHUNKROWS; r++) {
         for(c = 0; c < MESHSIZE; c++){
-            xLocal[r][c] = interiorInit;
+            xLocal[r][c] = INTERIOR_AVG;
         }
 
-        xLocal[r][MESHSIZE-1] = eastBound; //set value for east boundary
-        xLocal[r][0] = westBound;          //set value for west boundary
+        xLocal[r][MESHSIZE-1] = EAST_BOUND; //set value for east boundary
+        xLocal[r][0] = WEST_BOUND;          //set value for west boundary
     }
     for (c=0; c<MESHSIZE; c++) {
-	    xLocal[rFirst-1][c] = northBound;   //set value for north boundary
-	    xLocal[rLast+1][c] = southBound;    //set value for south boundary
+	    xLocal[rFirst-1][c] = NORTH_BOUND;   //set value for north boundary
+	    xLocal[rLast+1][c] = SOUTH_BOUND;    //set value for south boundary
     }
+    printf("Successfully initialized array data on proc %d\n", rank);
 
 
     itrCount = 0;
@@ -135,24 +147,32 @@ char **argv;
     } while (gDiffNorm > epsilon && itrCount < maxIterations);  //keep doing Jacobi iterations until we hit our iteration or precision limit
 
     
-    //send chunks to master
-    MPI_Send(xLocal[1], (MESHSIZE / commSize) * MESHSIZE, MPI_FLOAT, 0, 0, MPI_COMM_WORLD);
-    
     if(rank == 0){  //assemble chunks on master into full mesh
+        memcpy(xFull[0], xLocal[1], CHUNKSIZE * sizeof(float));
+
         int proc;
-        for(proc = 0; proc < commSize; proc++){
+        for(proc = 1; proc < commSize; proc++){
             //recieve each array chunk from other processes
             MPI_Recv(xFull[CHUNKROWS * proc], CHUNKSIZE, MPI_FLOAT, proc, 0, MPI_COMM_WORLD, &status); 
         }
 
         printMesh(xFull);
     }
+    else{
+            //send chunks to master
+            MPI_Send(xLocal[1], CHUNKSIZE, MPI_FLOAT, 0, 0, MPI_COMM_WORLD);
+            printf("sent chunk from %d\n", rank);
+    }
+    
+    freeContiguous2DArray(xLocal);
+    freeContiguous2DArray(xNew);
+    freeContiguous2DArray(xFull);
 
     MPI_Finalize( );
     return 0;
 }
 
-void printMesh(float meshArray[MESHSIZE][MESHSIZE]){
+void printMesh(float** meshArray){
     int r, c;   //loop control variables
 
     for(r = 0; r < MESHSIZE; r++){
@@ -163,4 +183,22 @@ void printMesh(float meshArray[MESHSIZE][MESHSIZE]){
         //print newline
         printf("\n");
     }
+}
+
+float** makeContiguous2DArray(int r, int c){
+    float** ary2D = (float**)malloc(sizeof(float*) * r);
+
+    float* pool = (float*)malloc(sizeof(float) * r * c);
+
+    int ri;
+    for(ri = 0; ri < r; ri++){
+        ary2D[ri] = pool + (ri * c);
+    }
+
+    return ary2D;
+}
+
+void freeContiguous2DArray(float** ary){
+    free(ary[0]);   //free the pool
+    free(ary);      //free the pointers
 }
