@@ -14,10 +14,10 @@
 #define CHUNKROWS (MESHSIZE/NUMPROC)
 #define CHUNKSIZE (CHUNKROWS * MESHSIZE)
 
+void writeToPPM(float** mesh, int iterations);
 void printMesh(float** meshArray);
 float** makeContiguous2DArray(int r, int c);
 void freeContiguous2DArray(float** ary);
-void swap2DArray(float** ary1, float** ary2);
 
 int main( argc, argv )
 int argc;
@@ -134,7 +134,10 @@ char **argv;
 		            (xNew[r][c] - xLocal[r][c]);
 	    }
 
-    swap2DArray(xLocal, xNew);
+    //swap array pointers
+    float** tmp = xLocal;
+    xLocal = xNew;
+    xNew = tmp;
 
 	MPI_Allreduce( &diffNorm, &gDiffNorm, 1, MPI_FLOAT, MPI_SUM,
 		       MPI_COMM_WORLD );
@@ -154,6 +157,7 @@ char **argv;
         }
 
         printMesh(xFull);
+        writeToPPM(xFull, itrCount);
     }
     else{
             //send chunks to master
@@ -168,6 +172,39 @@ char **argv;
     MPI_Finalize( );
     return 0;
 }
+
+//Write our PPM image from a 2d array
+void writeToPPM(float** mesh, int iterations) {
+	//make a file stream for our ppm file
+	FILE* fp = fopen("jacobi.ppm", "w");
+
+	//write the data out to the file
+		//output header information to ppm file
+        fprintf(fp, "P3 %d %d 255\n", MESHSIZE, MESHSIZE);
+        fprintf(fp, "#Steven Smiley | COMP233 | OpenMP Mandelbrot\n");
+        fprintf(fp, "#This image took %d iterations to converge.\n", iterations);
+
+        int r, c;
+		for (r = 0; r < MESHSIZE; r++) {
+			for (c = 0; c < MESHSIZE; c++) {
+                int val = (int)(mesh[r][c] * (255.0/100.0));
+
+				//write our color values to the buffer
+				fprintf(fp, "%d 0 0 ", val);
+				if (c % 5 == 4) {
+					//write a newline every 5th rgb value
+					fprintf(fp, "\n");
+				}
+				
+			}
+        }
+		
+
+		//close the file output stream
+		fclose(fp);
+	
+}
+
 
 void printMesh(float** meshArray){
     int r, c;   //loop control variables
@@ -198,11 +235,4 @@ float** makeContiguous2DArray(int r, int c){
 void freeContiguous2DArray(float** ary){
     free(ary[0]);   //free the pool
     free(ary);      //free the pointers
-}
-
-void swap2DArray(float** ary1, float** ary2){
-    float** temp = ary1;
-
-    ary1 = ary2;
-    ary2 = temp;
 }
