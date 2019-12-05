@@ -76,7 +76,6 @@ char **argv;
         return 0;
     }
 
-
     //allocate memory to 2d arrays
     xLocal = makeContiguous2DArray(CHUNKROWS + 2, MESHSIZE);
     xNew = makeContiguous2DArray(CHUNKROWS + 2, MESHSIZE);
@@ -85,6 +84,9 @@ char **argv;
     //assign our epsilon and maxIteration variables using our command line arguments
     epsilon = strtod(argv[1], NULL);
     maxIterations = strtol(argv[2], NULL, 10);
+    
+    //print the standard header
+    printf("Steven Smiley | COMP233 | Jacobi Iterations (MPI)\n");
 
     /* Note that top and bottom processes have one less row of interior
        points */
