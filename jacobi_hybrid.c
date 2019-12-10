@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <omp.h>
 #include "mpi.h"
 
 float lerp(float from, float to, float t);
@@ -52,6 +53,8 @@ char **argv;
     float epsilon;          //threshold for gDiffNorm; used to stop the Jacobi iteration loop
     int maxIterations;      //threshold for itrCount; used to stop the Jacobi iteration loop
 
+    int reqThreads;         //number of threads the user requested for openmp
+
     double start, stop;     //timer variables
 
     MPI_Init( &argc, &argv );
@@ -66,11 +69,11 @@ char **argv;
 
     
     //check that we have enough command line arguments
-    if(argc < 3){
+    if(argc < 4){
         //print usage information to head
         if(rank == 0){
             printf("Please specify the correct number of arguments.\n");
-            printf("Usage: jacobi [epsilon] [max_iterations]\n");
+            printf("Usage: jacobi [epsilon] [max_iterations] [threads]\n");
         }
 
         //exit the program
@@ -86,6 +89,7 @@ char **argv;
     //assign our epsilon and maxIteration variables using our command line arguments
     epsilon = strtod(argv[1], NULL);
     maxIterations = strtol(argv[2], NULL, 10);
+    reqThreads = strtol(argv[3], NULL, 10);
     
     //print the standard header
     printf("Steven Smiley | COMP233 | Jacobi Iterations (MPI)\n");
@@ -144,6 +148,8 @@ char **argv;
 	/* Compute new values (but not on boundary) */
 	itrCount ++;
 	diffNorm = 0.0;
+    
+#pragma omp parallel for private(r,c) reduction(+:diffNorm) num_threads(reqThreads)
 	for (r=rFirst; r<=rLast; r++) 
 	    for (c=1; c<MESHSIZE-1; c++) {
 		xNew[r * MESHSIZE + c] = (xLocal[r * MESHSIZE + c+1] + xLocal[r * MESHSIZE + c-1] +     //new value computed as the average of its 4 neighbors
